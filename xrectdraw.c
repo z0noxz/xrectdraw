@@ -6,11 +6,12 @@
 #include <X11/Xutil.h>
 
 Display *dpy;
-int screen;
+int screen, gfocus;
 Window root;
-Window win;
+Window win[4];
 Drawable drw;
 XColor color;
+XColor color_dim;
 
 void
 draw(int x, int y, int width, int height)
@@ -30,23 +31,23 @@ draw(int x, int y, int width, int height)
     swa.border_pixel = 0;
     swa.background_pixel = color.pixel;
     swa.override_redirect = 1;
-    swa.event_mask = ExposureMask | KeyPressMask | ButtonPressMask;
+    swa.event_mask = ExposureMask | KeyPressMask | ButtonPressMask | FocusChangeMask;
 
     XGetWindowAttributes(dpy, root, &wa);
 
     for (i = 0; i < 4; i++) {
-        win = XCreateWindow(dpy, root, ix, iy, iw, ih, 0,
+        win[i] = XCreateWindow(dpy, root, ix, iy, iw, ih, 0,
             CopyFromParent, CopyFromParent, CopyFromParent,
             CWOverrideRedirect | CWBackPixel | CWEventMask, &swa);
 
-        XSetClassHint(dpy, win, &ch);
+        XSetClassHint(dpy, win[i], &ch);
 
         xim = XOpenIM(dpy, NULL, NULL, NULL);
         xic = XCreateIC(xim, XNInputStyle, XIMPreeditNothing | XIMStatusNothing,
-            XNClientWindow, win, XNFocusWindow, win, NULL);
+            XNClientWindow, win[i], XNFocusWindow, win[i], NULL);
 
-        XMapRaised(dpy, win);
-        XSetInputFocus(dpy, win, RevertToParent, CurrentTime);
+        XMapRaised(dpy, win[i]);
+        XSetInputFocus(dpy, win[i], RevertToParent, CurrentTime);
 
         switch (i) {
         case 0:
@@ -85,6 +86,7 @@ setcolor(const char *clr)
     const char *ptr;
 
     color.flags = DoRed | DoGreen | DoBlue;
+    color_dim.flags = DoRed | DoGreen | DoBlue;
     for (i = 0; i < 3; i++) {
         ptr = clr + (1 + i * 2);
         r = (hex(ptr[0]) * 16 + hex(ptr[1])) * 256;
@@ -92,16 +94,40 @@ setcolor(const char *clr)
         switch (i) {
         case 0:
             color.red = r;
+            color_dim.red = r * 0.4;
             break;
         case 1:
             color.green = r;
+            color_dim.green = r * 0.4;
             break;
         case 2:
             color.blue = r;
+            color_dim.blue = r * 0.4;
             break;
         }
     }
     XAllocColor(dpy, DefaultColormap(dpy, screen), &color);
+    XAllocColor(dpy, DefaultColormap(dpy, screen), &color_dim);
+}
+
+void
+toggle()
+{
+    if (!gfocus)
+        XSetInputFocus(dpy, win[0], RevertToParent, CurrentTime);
+    else
+        XSetInputFocus(dpy, None, RevertToParent, CurrentTime);
+}
+
+void
+highlight(int focus)
+{
+    unsigned long pixel = (gfocus = focus) ? color.pixel : color_dim.pixel;
+
+    for (int i = 0; i < 4; i++) {
+        XSetWindowBackground(dpy, win[i], pixel);
+        XClearArea(dpy, win[i], 0, 0, 0, 0, True);
+    }
 }
 
 int
@@ -138,7 +164,11 @@ main(int argc, char *argv[])
         else if (ev.type == KeyPress && ev.xkey.keycode == 0x09)
             break;
         else if (ev.type == ButtonPress)
-            XSetInputFocus(dpy, win, RevertToParent, CurrentTime);
+            toggle();
+        else if (ev.type == FocusIn)
+            highlight(True);
+        else if (ev.type == FocusOut)
+            highlight(False);
     }
 
     XCloseDisplay(dpy);
