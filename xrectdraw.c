@@ -1,3 +1,26 @@
+/*
+ * MIT License
+ *
+ * © 2019 Chris Noxz <chris@noxz.tech>
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -6,6 +29,8 @@
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 
+#include "config.def.h"
+
 struct Border {
     int top;
     int right;
@@ -13,14 +38,11 @@ struct Border {
     int left;
 };
 
-Display *dpy;
-int screen, gfocus;
-Window root;
-Window win[4];
-Drawable drw;
-XColor color;
-XColor color_dim;
-struct Border border;
+static int screen, gfocus;
+static Display *dpy;
+static Window root, win[4];
+static XColor color[2];
+static struct Border border;
 
 void
 die(char *format, ...)
@@ -37,21 +59,13 @@ die(char *format, ...)
 void
 draw(int x, int y, int width, int height)
 {
-    int i;
+    int i, ix, iy, iw, ih;
     XWindowAttributes wa;
     XSetWindowAttributes swa;
     XClassHint ch = {"xrectdraw", "xrectdraw"};
-    XIM xim;
-    XIC xic;
-
-    // setup for left border
-    int ix = x - border.left,
-        iy = y - border.top,
-        iw = border.left,
-        ih = height + border.bottom;
 
     swa.border_pixel = 0;
-    swa.background_pixel = color.pixel;
+    swa.background_pixel = color[0].pixel;
     swa.override_redirect = 1;
     swa.event_mask = ExposureMask
         | KeyPressMask
@@ -61,38 +75,35 @@ draw(int x, int y, int width, int height)
     XGetWindowAttributes(dpy, root, &wa);
 
     for (i = 0; i < 4; i++) {
+        switch (i) {
+        case 0: // setup for left border
+            ix = x - border.left;
+            iy = y - border.top;
+            iw = border.left;
+            ih = height + border.bottom;
+            break;
+        case 1: // setup for right border
+            ix += (width + border.left);
+            iw = border.right;
+            break;
+        case 2: // setup for top border
+            ix -= (width + border.left);
+            iw = (width + border.left + border.right);
+            ih = border.top;
+            break;
+        case 3: // setup for bottom border
+            ih = border.bottom;
+            iy += (height + border.top);
+            break;
+        }
+
         win[i] = XCreateWindow(dpy, root, ix, iy, iw, ih, 0,
             CopyFromParent, CopyFromParent, CopyFromParent,
             CWOverrideRedirect | CWBackPixel | CWEventMask, &swa);
 
         XSetClassHint(dpy, win[i], &ch);
-
-        xim = XOpenIM(dpy, NULL, NULL, NULL);
-        xic = XCreateIC(xim, XNInputStyle,
-            XIMPreeditNothing | XIMStatusNothing,
-            XNClientWindow, win[i], XNFocusWindow, win[i], NULL);
-
         XMapRaised(dpy, win[i]);
         XSetInputFocus(dpy, win[i], RevertToParent, CurrentTime);
-
-        switch (i) {
-        // setup for right border
-        case 0:
-            ix += (width + border.left);
-            iw = border.right;
-            break;
-        // setup for top border
-        case 1:
-            ix -= (width + border.left);
-            iw = (width + border.left + border.right);
-            ih = border.top;
-            break;
-        // setup for bottom border
-        case 2:
-            ih = border.bottom;
-            iy += (height + border.top);
-            break;
-        }
     }
 }
 
@@ -107,6 +118,7 @@ hex(const char c)
         return c - 0x61 + 10;
     else
         puts("error: cannot set color");
+    return 0;
 }
 
 void
@@ -115,29 +127,31 @@ setcolor(const char *clr)
     int i, r;
     const char *ptr;
 
-    color.flags = DoRed | DoGreen | DoBlue;
-    color_dim.flags = DoRed | DoGreen | DoBlue;
+    color[0].flags = DoRed | DoGreen | DoBlue;
+    color[1].flags = DoRed | DoGreen | DoBlue;
+
     for (i = 0; i < 3; i++) {
         ptr = clr + (1 + i * 2);
         r = (hex(ptr[0]) * 16 + hex(ptr[1])) * 256;
 
         switch (i) {
         case 0:
-            color.red = r;
-            color_dim.red = r * 0.4;
+            color[0].red = r;
+            color[1].red = r * dim_percentage;
             break;
         case 1:
-            color.green = r;
-            color_dim.green = r * 0.4;
+            color[0].green = r;
+            color[1].green = r * dim_percentage;
             break;
         case 2:
-            color.blue = r;
-            color_dim.blue = r * 0.4;
+            color[0].blue = r;
+            color[1].blue = r * dim_percentage;
             break;
         }
     }
-    XAllocColor(dpy, DefaultColormap(dpy, screen), &color);
-    XAllocColor(dpy, DefaultColormap(dpy, screen), &color_dim);
+
+    XAllocColor(dpy, DefaultColormap(dpy, screen), &color[0]);
+    XAllocColor(dpy, DefaultColormap(dpy, screen), &color[1]);
 }
 
 void
@@ -152,7 +166,7 @@ toggle()
 void
 highlight(int focus)
 {
-    unsigned long pixel = (gfocus = focus) ? color.pixel : color_dim.pixel;
+    unsigned long pixel = color[!(gfocus = focus)].pixel;
 
     for (int i = 0; i < 4; i++) {
         XSetWindowBackground(dpy, win[i], pixel);
@@ -174,13 +188,12 @@ setborders(const char *str)
 int
 main(int argc, const char *argv[])
 {
-    int width, height,
-        x, y;
+    int x, y, width, height;
 
-    border.top = 1;
-    border.right = 1;
-    border.bottom = 1;
-    border.left = 1;
+    border.top = BORDER_TOP;
+    border.right = BORDER_RIGHT;
+    border.bottom = BORDER_BOTTOM;
+    border.left = BORDER_LEFT;
 
     if (argc == 7 && argc--)
         setborders(argv[6]);
@@ -220,7 +233,7 @@ main(int argc, const char *argv[])
         XNextEvent(dpy, &ev);
         if (ev.type == Expose)
             continue;
-        else if (ev.type == KeyPress && ev.xkey.keycode == 0x09)
+        else if (ev.type == KeyPress && ev.xkey.keycode == exit_key)
             break;
         else if (ev.type == ButtonPress)
             toggle();

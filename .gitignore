@@ -1,1 +1,3 @@
 xrectdraw
+config.h
+*.o
