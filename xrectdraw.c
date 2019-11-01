@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
 
 #include <X11/Xlib.h>
@@ -12,6 +13,18 @@ Window win[4];
 Drawable drw;
 XColor color;
 XColor color_dim;
+
+void
+die(char *format, ...)
+{
+    va_list args;
+
+    va_start(args, format);
+    vprintf(format, args);
+    va_end(args);
+
+    exit(1);
+}
 
 void
 draw(int x, int y, int width, int height)
@@ -139,7 +152,7 @@ main(int argc, char *argv[])
     if (argc != 6
         || strcmp(argv[1], "-h") == 0
         || strcmp(argv[1], "--help") == 0) {
-        printf("usage: %s x y width height #RRGGBB\n", argv[0]);
+        die("usage: %s x y width height #RRGGBB\n", argv[0]);
         return 1;
     }
 
