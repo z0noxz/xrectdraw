@@ -6,6 +6,13 @@
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 
+struct Border {
+    int top;
+    int right;
+    int bottom;
+    int left;
+};
+
 Display *dpy;
 int screen, gfocus;
 Window root;
@@ -13,6 +20,7 @@ Window win[4];
 Drawable drw;
 XColor color;
 XColor color_dim;
+struct Border border;
 
 void
 die(char *format, ...)
@@ -32,19 +40,23 @@ draw(int x, int y, int width, int height)
     int i;
     XWindowAttributes wa;
     XSetWindowAttributes swa;
-    XClassHint ch = {"xdrwrct", "xdrwrct"};
+    XClassHint ch = {"xrectdraw", "xrectdraw"};
     XIM xim;
     XIC xic;
 
-    int ix = x - 2,
-        iy = y - 2,
-        iw = 2,
-        ih = height + 5;
+    // setup for left border
+    int ix = x - border.left,
+        iy = y - border.top,
+        iw = border.left,
+        ih = height + border.bottom;
 
     swa.border_pixel = 0;
     swa.background_pixel = color.pixel;
     swa.override_redirect = 1;
-    swa.event_mask = ExposureMask | KeyPressMask | ButtonPressMask | FocusChangeMask;
+    swa.event_mask = ExposureMask
+        | KeyPressMask
+        | ButtonPressMask
+        | FocusChangeMask;
 
     XGetWindowAttributes(dpy, root, &wa);
 
@@ -56,24 +68,29 @@ draw(int x, int y, int width, int height)
         XSetClassHint(dpy, win[i], &ch);
 
         xim = XOpenIM(dpy, NULL, NULL, NULL);
-        xic = XCreateIC(xim, XNInputStyle, XIMPreeditNothing | XIMStatusNothing,
+        xic = XCreateIC(xim, XNInputStyle,
+            XIMPreeditNothing | XIMStatusNothing,
             XNClientWindow, win[i], XNFocusWindow, win[i], NULL);
 
         XMapRaised(dpy, win[i]);
         XSetInputFocus(dpy, win[i], RevertToParent, CurrentTime);
 
         switch (i) {
+        // setup for right border
         case 0:
-            ix += (width + 3);
+            ix += (width + border.left);
+            iw = border.right;
             break;
+        // setup for top border
         case 1:
-            ix -= (width + 3);
-            iw = (width + 5);
-            ih = 2;
+            ix -= (width + border.left);
+            iw = (width + border.left + border.right);
+            ih = border.top;
             break;
+        // setup for bottom border
         case 2:
-            ih = 5;
-            iy += (height + 3);
+            ih = border.bottom;
+            iy += (height + border.top);
             break;
         }
     }
@@ -143,21 +160,50 @@ highlight(int focus)
     }
 }
 
+void
+setborders(const char *str)
+{
+    if (sscanf(str, "%d:%d:%d:%d",
+        &border.top,
+        &border.right,
+        &border.bottom,
+        &border.left) != 4)
+        die("error: borders should be entered in the format 't:r:b:l'");
+}
+
 int
-main(int argc, char *argv[])
+main(int argc, const char *argv[])
 {
     int width, height,
         x, y;
 
+    border.top = 1;
+    border.right = 1;
+    border.bottom = 1;
+    border.left = 1;
+
+    if (argc == 7 && argc--)
+        setborders(argv[6]);
+
     if (argc != 6
         || strcmp(argv[1], "-h") == 0
-        || strcmp(argv[1], "--help") == 0) {
-        die("usage: %s x y width height #RRGGBB\n", argv[0]);
-        return 1;
-    }
+        || strcmp(argv[1], "--help") == 0)
+        die(
+            "usage: %s x y width height #RRGGBB [t:r:b:l]\n"
+            "  x        x coordinage on screen\n"
+            "  y        y coordinage on screen\n"
+            "  width    width of the rectangle\n"
+            "  height   height of the rectangle (downwards)\n"
+            "  #RRGGBB  hex border colors of the rectangle\n"
+            "  t:r:b:l  (optional) border widths: top, right, bottom & left\n"
+            "           e.g. 2:2:5:2. Default is 1:1:1:1\n\n"
+            "Use ESC key to kill the program when focused. Clicking on the"
+            "borders toggles the focus."
+        , argv[0]);
 
     if (!(dpy = XOpenDisplay(NULL)))
-        puts("error: cannot open display");
+        die("error: cannot open display");
+
     screen = DefaultScreen(dpy);
     root = RootWindow(dpy, screen);
 

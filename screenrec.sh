@@ -15,7 +15,7 @@ ffmpeg                                                                      \
 ffmpeg_pid=$!
 
 # run xrectdraw to indicate region being recorded
-xrectdraw $geo \#ff0000
+xrectdraw $geo \#ff0000 2:2:5:2
 
 # when xrectdraw dies kill ffmpeg
 kill $ffmpeg_pid
