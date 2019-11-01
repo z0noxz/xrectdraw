@@ -210,8 +210,8 @@ main(int argc, const char *argv[])
             "  #RRGGBB  hex border colors of the rectangle\n"
             "  t:r:b:l  (optional) border widths: top, right, bottom & left\n"
             "           e.g. 2:2:5:2. Default is 1:1:1:1\n\n"
-            "Use ESC key to kill the program when focused. Clicking on the"
-            "borders toggles the focus."
+            "Use ESC key to kill the program when focused. Clicking on the\n"
+            "borders toggles the focus.\n"
         , argv[0]);
 
     if (!(dpy = XOpenDisplay(NULL)))
